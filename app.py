@@ -5,7 +5,7 @@ import json
 from es_gpt import ESGPT
 
 # Create an instance of the ESGPT class
-es = ESGPT(index_name="papers")
+es = ESGPT(index_name="diaper")
 
 # Create a FastAPI app
 app = FastAPI()

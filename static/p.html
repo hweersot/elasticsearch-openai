@@ -52,8 +52,8 @@
                 item.appendChild(authors);
 
                 const abs = document.createElement("p");
-                abs.classList.add("abstract");
-                abs.textContent = `${result._source.abstract.substring(0, 500)}...`;
+                abs.classList.add("answer");
+                abs.textContent = `${result._source.a_text.substring(0, 500)}...`;
                 item.appendChild(abs);
 
                 resultsElement.appendChild(item);
@@ -75,9 +75,9 @@
 
 <body>
     <div id="search-container">
-        <h2>Elasticsearch with GPT (Sung's paper search)</h2>
+        <h2>Yuhan Kimberly gpt Knowledge Service2222???</h2>
         <div class="search-input-container">
-            <input type="text" id="query" placeholder="Enter a query (eg: How long it will take to fix bugs?)"
+            <input type="text" id="query" placeholder="Enter a query (eg: 생리주기는 보통 몇일인가요?)"
                 onkeydown="if (event.key === 'Enter') search()">
             <button onclick="search()">Search</button>
         </div>

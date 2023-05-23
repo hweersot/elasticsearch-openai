@@ -118,7 +118,7 @@ var SSE = function (url, options) {
   
       var data = this.xhr.responseText.substring(this.progress);
       this.progress += data.length;
-      data.split(/(\r\n|\r|\n){2}/g).forEach(function(part) {
+      data.split(/(\r\n|\r|\n)/g).forEach(function(part) {
         if (part.trim().length === 0) {
           this.dispatchEvent(this._parseEventChunk(this.chunk.trim()));
           this.chunk = '';
@@ -145,7 +145,7 @@ var SSE = function (url, options) {
       }
   
       var e = {'id': null, 'retry': null, 'data': '', 'event': 'message'};
-      chunk.split(/\n|\r\n|\r/).forEach(function(line) {
+      chunk.split(/\n|\r\n|\r/g).forEach(function(line) {
         line = line.trimRight();
         var index = line.indexOf(this.FIELD_SEPARATOR);
         if (index <= 0) {

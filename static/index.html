@@ -36,7 +36,7 @@
                 item.classList.add("search-result");
 
                 const title = document.createElement("b");
-                title.textContent = result._source.title;
+                title.textContent = result._source.question_title;
                 item.appendChild(title);
 
                 const authors = document.createElement("p");
@@ -44,11 +44,11 @@
                 item.appendChild(authors);
 
                 const abs = document.createElement("p");
-                abs.classList.add("abstract");
-                if ('abstract' in result._source) {
-                    abs.textContent = `${result._source.abstract.substring(0, 500)}...`;
+                abs.classList.add("answer");
+                if ('a_text_500' in result._source) {
+                    abs.textContent = `${result._source.a_text_500.substring(0, 500)}...`;
                 } else {
-                    abs.textContent = "Abstract not available";
+                    abs.textContent = "Answer not available";
                 } item.appendChild(abs);
 
                 resultsElement.appendChild(item);
@@ -69,6 +69,7 @@
                     eventSource.close();
                     return;
                 }
+                console.log(event.data)
                 const result = JSON.parse(event.data);
                 summaryElement.innerHTML += result['choices'][0]['text'];
             };
@@ -95,9 +96,9 @@
 
 <body>
     <div id="search-container">
-        <h2>Elasticsearch with GPT (Sung's paper search)</h2>
+        <h2>Yuhan Kimberly gpt Knowledge Service</h2>
         <div class="search-input-container">
-            <input type="text" id="query" placeholder="Enter a query (eg: How long it will take to fix bugs?)"
+            <input type="text" id="query" placeholder="Enter a query (eg: 생리주기는 보통 몇일인가요?)"
                 onkeydown="if (event.key === 'Enter') searchAndSummarize()">
             <button onclick="searchAndSummarize()">Search</button>
         </div>
@@ -108,7 +109,7 @@
     </div>
     <div id="summary-container">
         <h3>GPT Answer</h3>
-        <i>poor result due to text-ada-001</i>
+        <i>Poor result or Error Occured</i>
         <div id="summary"></div>
     </div>
     <i>Visit <a href="https://github.com/hunkim/es-gpt">https://github.com/hunkim/es-gpt</a> for more information</i>

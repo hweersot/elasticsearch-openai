@@ -20,8 +20,9 @@ ES_CA_CERT = os.environ["ES_CA_CERT"]
 
 class ESGPT:
     def __init__(self, index_name):
-        self.es = Elasticsearch(ES_URL, basic_auth=(ES_USER, ES_PASS),
-                                ca_certs=ES_CA_CERT, verify_certs=True)
+#        self.es = Elasticsearch(ES_URL, basic_auth=(ES_USER, ES_PASS),
+#                                ca_certs=ES_CA_CERT, verify_certs=True)
+        self.es = Elasticsearch(cloud_id=ES_URL, basic_auth=(ES_USER, ES_PASS))
         self.index_name = index_name
 
         # FIXME: remove .strip()
@@ -35,27 +36,30 @@ class ESGPT:
         # Load the cl100k_base tokenizer which is designed to work with the ada-002 model
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
-    def index(self, doc_id, doc, text):
-        doc["embeddings_dict_list"] = self._create_emb_dict_list(text)
+    def index(self, doc_id, doc, a_text):
+        doc["embeddings_dict_list"] = self._create_emb_dict_list(a_text)
         self.es.index(index=self.index_name,
                       id=doc_id,
                       document=doc)
 
     def search(self, query):
+        #쿼리 튜닝하기
         es_query = {
-            "query_string": {"query": query}
+            "query_string": {
+                "fields": ["question_tile^5","q_text","a_text_500"],
+                "query": query}
         }
 
         results = self.es.search(index=self.index_name, query=es_query)
         return results['hits']['hits']
 
-    def _paper_results_to_text(self, results):
+    def _es_results_to_text(self, results):
         text_result = ""
-        for paper in results:
-            title = paper["_source"].get("title", "")
-            abstract = paper["_source"].get("abstract", "")
-            paper_str = f"{title}:\n{abstract}\n\n"
-            text_result += paper_str
+        for result in results:
+            title = result["_source"].get("question_title", "")
+            a_text = result['_source'].get("a_text_500","")
+            result_str = f"{title}:\n{a_text}\n\n"
+            text_result += result_str
         return text_result
 
     # Code from https://github.com/openai/openai-cookbook/blob/main/apps/web-crawl-q-and-a/web-qa.py
@@ -100,16 +104,15 @@ class ESGPT:
         return chunks
 
 
-    def _create_emb_dict_list(self, long_text):
-        shortened = self._split_into_many(long_text)
-
+    def _create_emb_dict_list(self, a_text):
+        shortened = self._split_into_many(a_text)
         embeddings_dict_list = []
 
         for text in shortened:
             n_tokens = len(self.tokenizer.encode(text))
             embeddings = get_embedding(input=text)
             embeddings_dict = {}
-            embeddings_dict["text"] = text
+            embeddings_dict["a_text"] = text
             embeddings_dict["n_tokens"] = n_tokens
             embeddings_dict["embeddings"] = embeddings
             embeddings_dict_list.append(embeddings_dict)
@@ -141,20 +144,23 @@ class ESGPT:
                 break
 
             # Else add it to the text that is being returned
-            returns.append(row["text"])
-
+            returns.append(row["a_text"])
         # Return the context and the length of the context
         return "\n\n###\n\n".join(returns), cur_len
 
     def _gpt_api_call(self, query, input_token_len, context):
+        #여기 prompt 방식에 맞게 고치기
         body = {
             "model": self.model_engine,
-            "prompt": f"Based on the context below\"\n\nContext: {context}\n\n---\n\nPlease provide concise answer for this questions: {query}",
-            "max_tokens": self.model_max_tokens - input_token_len,
+            "prompt": f"Based on the context below\n\nContext: {context}\n\n---\n\nPlease provide concise answer for this questions: {query}",
+#            "max_tokens": self.model_max_tokens - input_token_len,
+            "max_tokens": 300,
             "n": 1,
             "temperature": 0.5,
             "stream": True,
         }
+        print(self.model_max_tokens - input_token_len,len(context))
+        print(f"Based on the context below\n\nContext: {context}\n\n---\n\nPlease provide concise answer for this questions: {query}")
 
         headers = {"Content-Type": "application/json",
                    "Authorization": f"Bearer {self.api_key}"}
@@ -162,7 +168,9 @@ class ESGPT:
         resp = requests.post("https://api.openai.com/v1/completions",
                              headers=headers,
                              data=json.dumps(body),
-                             stream=True)
+                             stream=True,
+                             verify=False)
+        print(resp.text)
         return resp
 
     def gpt_answer(self, query, es_results=None, text_results=None):
@@ -173,15 +181,15 @@ class ESGPT:
                 context = text_results
             else:
                 emb_dict_list = self._create_emb_dict_list(text_results)
-                df = pd.DataFrame(columns=["text", "n_tokens", "embeddings"])
+                df = pd.DataFrame(columns=["q_text", "a_text", "n_tokens", "embeddings"])
                 for emb_dict in emb_dict_list:
-                    df = df.append(emb_dict, ignore_index=True)
+                    df = pd.concat([df,pd.DataFrame.from_dict(emb_dict,orient='index').T], ignore_index=True)
 
                 context, input_token_len = self._create_context(
                     question=query,
                     df=df)
         elif es_results:
-            result_json_str = self._paper_results_to_text(es_results)
+            result_json_str = self._es_results_to_text(es_results)
             if not result_json_str:
                 result_json_str = "No results found"
 
@@ -190,13 +198,13 @@ class ESGPT:
                 context = result_json_str
             else:
                 # Create a pandas DataFrame from the list of embeddings dictionaries
-                df = pd.DataFrame(columns=["text", "n_tokens", "embeddings"])
+                df = pd.DataFrame(columns=["q_text", "a_text", "n_tokens", "embeddings"])
 
                 # extract embeddings_dict from es_results and append to the dataframe
                 for hit in es_results:
                     embeddings_dict_list = hit['_source']['embeddings_dict_list']
                     for embeddings_dict in embeddings_dict_list:
-                        df = df.append(embeddings_dict, ignore_index=True)
+                        df = pd.concat([df,pd.DataFrame.from_dict(embeddings_dict,orient='index').T], ignore_index=True)
 
                 context, input_token_len = self._create_context(
                     question=query,
@@ -209,16 +217,16 @@ class ESGPT:
 
 # Example usage
 if __name__ == "__main__":
-    esgpt = ESGPT("papers")
-    query = "How to fix this bugs?"
+#    esgpt = ESGPT("period")
+    esgpt = ESGPT("period")
+    query = "생리는 몇살부터 하는건가요?"
     res = esgpt.search(query=query)
-    res_str = esgpt._paper_results_to_text(res)
-
+#    res_str = esgpt._es_results_to_text(res)
     # Pass ES results with precomputed embeddings
-    res = esgpt.gpt_answer(query=query, es_results=res)
-    print(res.text)
+#    res = esgpt.gpt_answer(query=query, es_results=res)
+#    print(res.text)
 
     # Pass text results and do embeddings on the fly
     # Note: This will be slower
-    res = esgpt.gpt_answer(query=query, text_results=res_str)
-    print(res.text)
+#    res = esgpt.gpt_answer(query=query, text_results=res_str)
+#    print(res.text)
